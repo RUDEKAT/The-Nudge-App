@@ -1,3 +1,7 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/ideas/route": "app/api/ideas/route.js",
+  "/api/hashtags/route": "app/api/hashtags/route.js",
+  "/api/polish/route": "app/api/polish/route.js",
   "/page": "app/page.js"
 }

@@ -1,41 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { callAI, HUMAN_CENTRIC_IDEAS } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
-    const { prompt, apiKey } = await request.json();
+    const body = await request.json();
+    const { prompt, apiKey, provider = 'anthropic' } = body;
     
-    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    const key = apiKey || process.env.API_KEY;
     if (!key) {
-      return NextResponse.json({ error: 'API key required' }, { status: 400 });
+      return NextResponse.json({ error: 'API key required. Add one in Settings.' }, { status: 400 });
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    const data = await res.json();
+    console.log(`[${Date.now() - startTime}ms] Calling ${provider} API...`);
     
-    if (data.error) {
-      return NextResponse.json({ error: data.error.message }, { status: 400 });
+    const text = await callAI(provider, key, HUMAN_CENTRIC_IDEAS, prompt);
+    
+    if (!text) {
+      return NextResponse.json({ error: 'Empty response from API. Check your key.' }, { status: 500 });
     }
-
-    const text = data.content?.find((b: any) => b.type === 'text')?.text || '';
+    
+    // Clean up the response - remove markdown code blocks
     const cleaned = text.replace(/```json|```/g, '').trim();
     const ideas = JSON.parse(cleaned);
 
     return NextResponse.json({ ideas });
   } catch (error) {
-    console.error('Ideas API error:', error);
-    return NextResponse.json({ error: 'Failed to generate ideas' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Ideas API error:', errMsg);
+    return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

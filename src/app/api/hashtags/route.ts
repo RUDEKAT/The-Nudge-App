@@ -1,41 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { callAI, HUMAN_CENTRIC_HASHTAGS } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, apiKey } = await request.json();
+    const { content, apiKey, provider = 'anthropic' } = await request.json();
     
-    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    const key = apiKey || process.env.API_KEY;
     if (!key) {
-      return NextResponse.json({ error: 'API key required' }, { status: 400 });
+      return NextResponse.json({ error: 'API key required. Add one in Settings.' }, { status: 400 });
     }
 
-    const prompt = `Suggest 5-8 relevant hashtags for this post. Return only the hashtags separated by spaces, nothing else:\n\n${content}`;
+    const hashtags = await callAI(provider, key, HUMAN_CENTRIC_HASHTAGS, content);
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 100,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    const data = await res.json();
-    
-    if (data.error) {
-      return NextResponse.json({ error: data.error.message }, { status: 400 });
+    if (!hashtags) {
+      return NextResponse.json({ error: 'Empty response from API' }, { status: 500 });
     }
 
-    const hashtags = data.content?.find((b: any) => b.type === 'text')?.text || '#creator #content';
-
-    return NextResponse.json({ hashtags });
+    return NextResponse.json({ hashtags: hashtags.trim() });
   } catch (error) {
-    console.error('Hashtags API error:', error);
-    return NextResponse.json({ error: 'Failed to suggest hashtags' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Hashtags API error:', errMsg);
+    return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

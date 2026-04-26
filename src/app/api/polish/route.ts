@@ -1,41 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { callAI, HUMAN_CENTRIC_POLISH } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, platform, apiKey } = await request.json();
+    const { content, platform, apiKey, provider = 'anthropic' } = await request.json();
     
-    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    const key = apiKey || process.env.API_KEY;
     if (!key) {
-      return NextResponse.json({ error: 'API key required' }, { status: 400 });
+      return NextResponse.json({ error: 'API key required. Add one in Settings.' }, { status: 400 });
     }
 
-    const prompt = `Polish this social media post for ${platform}. Keep the voice authentic and human. Make it more engaging without being cringe. Return ONLY the improved post text, nothing else:\n\n${content}`;
+    const userMsg = `Platform: ${platform}\n\nPost to polish:\n${content}`;
+    const polished = await callAI(provider, key, HUMAN_CENTRIC_POLISH, userMsg);
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    const data = await res.json();
-    
-    if (data.error) {
-      return NextResponse.json({ error: data.error.message }, { status: 400 });
+    if (!polished) {
+      return NextResponse.json({ error: 'Empty response from API' }, { status: 500 });
     }
 
-    const polished = data.content?.find((b: any) => b.type === 'text')?.text || content;
-
-    return NextResponse.json({ polished });
+    return NextResponse.json({ polished: polished.trim() });
   } catch (error) {
-    console.error('Polish API error:', error);
-    return NextResponse.json({ error: 'Failed to polish post' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Polish API error:', errMsg);
+    return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

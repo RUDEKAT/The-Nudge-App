@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAppStore, Post, Idea } from '@/stores/useAppStore';
+import { useAppStore, Post, Idea, API_PROVIDERS, ApiProvider } from '@/stores/useAppStore';
 
 const platMeta: Record<string, { key: string; icon: string; cls: string; limit: number }> = {
-  Instagram: { key: 'ig', icon: '📸', cls: 'pb-ig', limit: 2200 },
-  'X / Twitter': { key: 'tw', icon: '𝕏', cls: 'pb-tw', limit: 280 },
-  LinkedIn: { key: 'li', icon: '💼', cls: 'pb-li', limit: 3000 },
-  TikTok: { key: 'tk', icon: '🎵', cls: 'pb-tk', limit: 150 },
+  Instagram: { key: 'ig', icon: 'fa-instagram', cls: 'pb-ig', limit: 2200 },
+  'X / Twitter': { key: 'tw', icon: 'fa-x-twitter', cls: 'pb-tw', limit: 280 },
+  LinkedIn: { key: 'li', icon: 'fa-linkedin', cls: 'pb-li', limit: 3000 },
+  TikTok: { key: 'tk', icon: 'fa-tiktok', cls: 'pb-tk', limit: 150 },
 };
 
 const demoIdeas = [
@@ -70,12 +70,11 @@ export default function Home() {
     setIsGenerating(true);
     const niche = store.user?.niche || 'Creator';
     const platformList = Array.from(selectedPlatforms).join(', ') || 'Instagram, X';
+    const provider = store.apiProvider;
     
-    const prompt = `You are a social media strategist helping a ${niche} grow their online presence. 
-Generate exactly 5 fresh, specific, actionable post ideas for: ${platformList}.
-Each idea should feel personal, authentic, and easy to execute in under 30 minutes.
-Return ONLY valid JSON array, no markdown, no explanation:
-[{"type":"Post type","plat":"ig/tw/li/tk","text":"1-2 sentence idea description"}]`;
+    const prompt = `Generate 5 post ideas for a ${niche} on ${platformList}. 
+Each idea should feel personal, authentic, and be easy to execute in under 30 minutes.
+Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"1-2 sentence idea"}]`;
 
     try {
       const apiKey = store.apiKey || apiKeyInput;
@@ -84,9 +83,15 @@ Return ONLY valid JSON array, no markdown, no explanation:
       const res = await fetch('/api/ideas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, apiKey }),
+        body: JSON.stringify({ prompt, apiKey, provider }),
       });
       const data = await res.json();
+      
+      if (data.error) {
+        store.showToast(data.error, 'error');
+        throw new Error(data.error);
+      }
+      
       const ideas: Idea[] = data.ideas.map((i: any, idx: number) => ({
         id: `idea-${Date.now()}-${idx}`,
         type: i.type,
@@ -105,9 +110,8 @@ Return ONLY valid JSON array, no markdown, no explanation:
     const content = store.composeContent.trim();
     if (!content) { store.showToast('Write something first!', 'error'); return; }
     const plat = store.composePlatform;
+    const provider = store.apiProvider;
     
-    const prompt = `Polish this social media post. Keep the voice authentic and human. Make it more engaging without being cringe. Return ONLY the improved post text:\n\n${content}`;
-
     try {
       const apiKey = store.apiKey || apiKeyInput;
       if (!apiKey) throw new Error('No API key');
@@ -115,7 +119,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
       const res = await fetch('/api/polish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, platform: plat, apiKey }),
+        body: JSON.stringify({ content, platform: plat, apiKey, provider }),
       });
       const data = await res.json();
       store.setComposeContent(data.polished);
@@ -128,9 +132,8 @@ Return ONLY valid JSON array, no markdown, no explanation:
   const addHashtags = async () => {
     const content = store.composeContent.trim();
     if (!content) { store.showToast('Write something first!', 'error'); return; }
+    const provider = store.apiProvider;
     
-    const prompt = `Suggest 5-8 relevant hashtags for this post. Return only the hashtags separated by spaces:\n\n${content}`;
-
     try {
       const apiKey = store.apiKey || apiKeyInput;
       if (!apiKey) throw new Error('No API key');
@@ -138,7 +141,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
       const res = await fetch('/api/hashtags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, apiKey }),
+        body: JSON.stringify({ content, apiKey, provider }),
       });
       const data = await res.json();
       store.setComposeContent(content + '\n\n' + data.hashtags);
@@ -199,7 +202,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
           <div className="chip-grid">
             {niches.map(n => (
               <div key={n} className={`chip ${selectedNiche === n ? 'sel' : ''}`} onClick={() => setSelectedNiche(n)}>
-                <div className="chip-icon">{n === 'Creator' ? '🎨' : n === 'Business' ? '🏢' : n === 'Freelancer' ? '💼' : n === 'Student' ? '📚' : n === 'Fitness' ? '💪' : '💻'}</div>
+                <div className="chip-icon"><i className={`fa-solid ${n === 'Creator' ? 'fa-palette' : n === 'Business' ? 'fa-building' : n === 'Freelancer' ? 'briefcase' : n === 'Student' ? 'graduation-cap' : n === 'Fitness' ? 'dumbbell' : 'fa-code'}`}></i></div>
                 <div className="chip-name">{n}</div>
                 <div className="chip-desc">{n === 'Creator' ? 'Content, art, videos' : n === 'Business' ? 'Brand, products, services' : n === 'Freelancer' ? 'Skills, portfolio, clients' : n === 'Student' ? 'Learning, projects, growth' : n === 'Fitness' ? 'Health, routines, progress' : 'Code, tools, products'}</div>
               </div>
@@ -222,9 +225,13 @@ Return ONLY valid JSON array, no markdown, no explanation:
           <div className="plat-list">
             {platforms.map(p => (
               <div key={p} className={`plat-row ${selectedPlatforms.has(p) ? 'sel' : ''}`} onClick={() => togglePlatform(p)}>
-                <div className="plat-row-icon">{platMeta[p]?.icon}</div>
+                <div className="plat-row-icon">
+                  <i className={`fa-brands ${platMeta[p]?.icon}`}></i>
+                </div>
                 <div className="plat-row-name">{p}</div>
-                <div className="check-circle">{selectedPlatforms.has(p) ? '✓' : ''}</div>
+                <div className="check-circle">
+                  {selectedPlatforms.has(p) ? <i className="fa-solid fa-circle-check"></i> : <i className="fa-regular fa-circle"></i>}
+                </div>
               </div>
             ))}
           </div>
@@ -279,7 +286,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
         .bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--s1);border-top:1px solid var(--b1);display:flex;z-index:20;padding-bottom:env(safe-area-inset-bottom)}
         .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:.65rem .5rem .4rem;cursor:pointer;color:var(--t3);gap:2px;transition:color .15s}
         .nav-item.active{color:var(--amber)}
-        .nav-icon{font-size:20px;line-height:1}
+        .nav-icon{font-size:18px;line-height:1}
         .nav-lbl{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
         
         .nudge-card{background:var(--amber-bg);border:1px solid rgba(232,148,42,.28);border-radius:var(--rlg);padding:1.1rem;margin-bottom:.85rem}
@@ -355,6 +362,15 @@ Return ONLY valid JSON array, no markdown, no explanation:
         .api-input{width:100%;background:transparent;border:none;outline:none;padding:.9rem 1rem;font-size:13px;color:var(--text);font-family:inherit}
         .api-input::placeholder{color:var(--t3)}
         .api-note{font-size:11px;color:var(--t3);margin-top:.5rem;line-height:1.5}
+        .api-provider-list{display:flex;flex-direction:column;gap:.5rem}
+        .api-provider-row{background:var(--s2);border:1.5px solid var(--b1);border-radius:var(--r);padding:.75rem 1rem;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:space-between}
+        .api-provider-row.sel{border-color:var(--amber);background:var(--amber-bg)}
+        .api-provider-name{font-size:13px;font-weight:600}
+        .api-provider-model{font-size:11px;color:var(--t2);margin-top:1px}
+        .free-tag{font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;background:var(--b2);color:var(--text)}
+        .free-tag.free{background:rgba(82,184,112,.2);color:#6ACA88}
+        .kofi-btn{display:flex;align-items:center;justify-content:center;gap:.5rem;background:#13c5fa;border:none;border-radius:var(--r);padding:.75rem 1rem;font-size:14px;font-weight:600;color:#fff;cursor:pointer;font-family:inherit;text-decoration:none;transition:all .15s}
+        .kofi-btn:hover{background:#0eb3f0}
       `}</style>
       
       <div className="app-bar">
@@ -470,21 +486,48 @@ Return ONLY valid JSON array, no markdown, no explanation:
         
         {tab === 'settings' && (
           <div className="tab-pane active">
-            <div className="settings-sec">
-              <div className="settings-h">Connected platforms</div>
-              {platforms.map(p => {
-                const isConn = selectedPlatforms.has(p);
-                return (
-                  <div key={p} className="conn-card fade">
-                    <div className="conn-icon">{platMeta[p]?.icon}</div>
-                    <div style={{ flex: 1 }}>
-                      <div className="conn-name">{p}</div>
-                      <div className="conn-status"><div className={`cdot ${isConn ? 'on' : ''}`}></div>{isConn ? 'Connected' : 'Not connected'}</div>
+<div className="settings-sec">
+              <div className="settings-h">AI Provider</div>
+              <div className="api-provider-list">
+                {API_PROVIDERS.map(p => (
+                  <div 
+                    key={p.id} 
+                    className={`api-provider-row ${store.apiProvider === p.id ? 'sel' : ''}`}
+                    onClick={() => store.setApiProvider(p.id)}
+                  >
+                    <div className="api-provider-info">
+                      <div className="api-provider-name">{p.name}</div>
+                      <div className="api-provider-model">{p.model}</div>
                     </div>
-                    <button className="btn-conn" onClick={() => togglePlatform(p)}>{isConn ? 'Disconnect' : 'Connect'}</button>
+                    <div className={`free-tag ${p.free ? 'free' : ''}`}>{p.free ? 'FREE' : 'PAID'}</div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+            <div className="settings-sec">
+              <div className="settings-h">API Key (BYOK)</div>
+              <div className="api-wrap">
+                <input 
+                  className="api-input" 
+                  type="password" 
+                  placeholder={store.apiProvider === 'groq' ? 'gsk_...' : store.apiProvider === 'deepseek' ? 'sk-' : 'sk-...'} 
+                  value={apiKeyInput}
+                  onChange={(e) => { setApiKeyInput(e.target.value); store.setApiKey(e.target.value); }}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="api-note">
+                {store.apiProvider === 'anthropic' && 'Get free key at console.anthropic.com'}
+                {store.apiProvider === 'groq' && 'Get free key at console.groq.com'}
+                {store.apiProvider === 'deepseek' && 'Get free key at platform.deepseek.com'}
+                {store.apiProvider === 'openai' && 'Get key at platform.openai.com'}
+              </div>
+            </div>
+            <div className="settings-sec">
+              <div className="settings-h">Support the project</div>
+              <a href="https://ko-fi.com/nudge" target="_blank" rel="noopener noreferrer" className="kofi-btn">
+                <i className="fa-solid fa-mug-hot"></i> Buy me a coffee
+              </a>
             </div>
             <div className="settings-sec">
               <div className="settings-h">Privacy & policy</div>
@@ -515,16 +558,16 @@ Return ONLY valid JSON array, no markdown, no explanation:
       
       <div className="bottom-nav">
         <div className={`nav-item ${tab === 'home' ? 'active' : ''}`} onClick={() => showTab('home')}>
-          <div className="nav-icon">🏠</div><div className="nav-lbl">Home</div>
+          <i className={`fa-solid fa-house${tab === 'home' ? '' : '-user'}`}></i><div className="nav-lbl">Home</div>
         </div>
         <div className={`nav-item ${tab === 'ideas' ? 'active' : ''}`} onClick={() => showTab('ideas')}>
-          <div className="nav-icon">✦</div><div className="nav-lbl">Ideas</div>
+          <i className="fa-regular fa-lightbulb"></i><div className="nav-lbl">Ideas</div>
         </div>
         <div className={`nav-item ${tab === 'compose' ? 'active' : ''}`} onClick={() => showTab('compose')}>
-          <div className="nav-icon">✏️</div><div className="nav-lbl">Compose</div>
+          <i className="fa-regular fa-pen-to-square"></i><div className="nav-lbl">Compose</div>
         </div>
         <div className={`nav-item ${tab === 'settings' ? 'active' : ''}`} onClick={() => showTab('settings')}>
-          <div className="nav-icon">⚙️</div><div className="nav-lbl">Settings</div>
+          <i className="fa-solid fa-gear"></i><div className="nav-lbl">Settings</div>
         </div>
       </div>
     </div>
