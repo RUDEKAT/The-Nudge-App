@@ -78,6 +78,13 @@ interface AppState {
   apiProvider: ApiProvider;
   setApiProvider: (provider: ApiProvider) => void;
   reset: () => void;
+  plan: 'free' | 'pro';
+  setPlan: (plan: 'free' | 'pro') => void;
+  ideasUsedToday: number;
+  incrementIdeasUsed: () => void;
+  resetIdeasUsed: () => void;
+  ideaFeedback: Record<string, 'up' | 'down'>;
+  addIdeaFeedback: (ideaId: string, feedback: 'up' | 'down') => void;
 }
 
 const initialState = {
@@ -93,6 +100,9 @@ const initialState = {
   toast: null as { message: string; type: 'success' | 'error' | 'info' } | null,
   apiKey: '',
   apiProvider: 'anthropic' as ApiProvider,
+  plan: 'free' as const,
+  ideasUsedToday: 0,
+  ideaFeedback: {} as Record<string, 'up' | 'down'>,
 };
 
 export const useAppStore = create<AppState>()(
@@ -144,6 +154,12 @@ export const useAppStore = create<AppState>()(
       setApiKey: (key) => set({ apiKey: key }),
       setApiProvider: (provider) => set({ apiProvider: provider }),
       reset: () => set(initialState),
+      setPlan: (plan) => set({ plan }),
+      incrementIdeasUsed: () => set((state) => ({ ideasUsedToday: state.ideasUsedToday + 1 })),
+      resetIdeasUsed: () => set({ ideasUsedToday: 0 }),
+      addIdeaFeedback: (ideaId, feedback) => set((state) => ({
+        ideaFeedback: { ...state.ideaFeedback, [ideaId]: feedback }
+      })),
     }),
     {
       name: 'nudge-storage',
@@ -155,6 +171,9 @@ export const useAppStore = create<AppState>()(
         posts: state.posts,
         apiKey: state.apiKey,
         apiProvider: state.apiProvider,
+        plan: state.plan,
+        ideasUsedToday: state.ideasUsedToday,
+        ideaFeedback: state.ideaFeedback,
       }),
     }
   )

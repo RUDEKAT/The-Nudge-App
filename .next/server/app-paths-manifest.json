@@ -1,7 +1,9 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
-  "/api/ideas/route": "app/api/ideas/route.js",
   "/api/hashtags/route": "app/api/hashtags/route.js",
+  "/api/ideas/route": "app/api/ideas/route.js",
   "/api/polish/route": "app/api/polish/route.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/checkout/route": "app/api/checkout/route.js",
+  "/api/webhooks/stripe/route": "app/api/webhooks/stripe/route.js"
 }

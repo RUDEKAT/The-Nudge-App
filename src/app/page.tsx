@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore, Post, Idea, API_PROVIDERS, ApiProvider } from '@/stores/useAppStore';
+import { initPostHog, trackEvents } from '@/lib/analytics';
+import { IdeaSkeleton } from '@/components/SkeletonLoaders';
 
 const platMeta: Record<string, { key: string; icon: string; cls: string; limit: number }> = {
   Instagram: { key: 'ig', icon: 'fa-instagram', cls: 'pb-ig', limit: 2200 },
@@ -41,6 +43,20 @@ export default function Home() {
   const streak = store.user?.streak ?? 9;
 
   useEffect(() => {
+    initPostHog();
+    if (!store.hasCompletedOnboarding) {
+      trackEvents.onboardingStarted();
+    }
+    // Check for daily reset
+    const lastReset = localStorage.getItem('nudge-ideas-reset-date');
+    const today = new Date().toDateString();
+    if (lastReset !== today) {
+      store.resetIdeasUsed();
+      localStorage.setItem('nudge-ideas-reset-date', today);
+    }
+  }, []);
+
+  useEffect(() => {
     if (store.hasCompletedOnboarding) {
       setScreen('app');
     }
@@ -67,7 +83,17 @@ export default function Home() {
   };
 
   const generateIdeas = async () => {
+    if (store.plan === 'free' && store.ideasUsedToday >= 5) {
+      store.showToast('Daily limit reached. Upgrade to Pro for unlimited ideas!', 'info');
+      trackEvents.upgradeCtaClicked();
+      return;
+    }
+
     setIsGenerating(true);
+    if (store.plan === 'free') {
+      store.incrementIdeasUsed();
+    }
+    
     const niche = store.user?.niche || 'Creator';
     const platformList = Array.from(selectedPlatforms).join(', ') || 'Instagram, X';
     const provider = store.apiProvider;
@@ -83,7 +109,7 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
       const res = await fetch('/api/ideas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, apiKey, provider }),
+        body: JSON.stringify({ prompt, apiKey, provider, space: niche, platform: selectedPlatforms.size === 1 ? Array.from(selectedPlatforms)[0] : 'mixed' }),
       });
       const data = await res.json();
       
@@ -100,7 +126,10 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
         used: false,
       }));
       store.setIdeas(ideas);
-    } catch {
+    } catch (err: any) {
+      if (err.message !== 'No API key') {
+        store.showToast(err.message || 'Failed to generate ideas', 'error');
+      }
       store.setIdeas(demoIdeas.map((i, idx) => ({ ...i, id: `demo-${Date.now()}-${idx}`, used: false })));
     }
     setIsGenerating(false);
@@ -122,10 +151,11 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
         body: JSON.stringify({ content, platform: plat, apiKey, provider }),
       });
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       store.setComposeContent(data.polished);
       store.showToast('Post polished!', 'success');
-    } catch {
-      store.showToast('Add API key in Settings', 'error');
+    } catch (err: any) {
+      store.showToast(err.message || 'Error polishing post', 'error');
     }
   };
 
@@ -144,10 +174,11 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
         body: JSON.stringify({ content, apiKey, provider }),
       });
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       store.setComposeContent(content + '\n\n' + data.hashtags);
       store.showToast('Hashtags added!', 'success');
-    } catch {
-      store.showToast('Add API key in Settings', 'error');
+    } catch (err: any) {
+      store.showToast(err.message || 'Error adding hashtags', 'error');
     }
   };
 
@@ -293,6 +324,7 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
         .nudge-tag{font-size:9px;font-weight:700;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem}
         .nudge-msg{font-size:15px;font-weight:600;line-height:1.35;margin-bottom:.3rem}
         .nudge-sub{font-size:12px;color:var(--t2);margin-bottom:.9rem}
+        .usage-pill{font-size:11px;color:var(--t3);text-align:center;margin-bottom:.85rem}
         
         .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.85rem}
         .stat-card{background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:1rem}
@@ -371,6 +403,15 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
         .free-tag.free{background:rgba(82,184,112,.2);color:#6ACA88}
         .kofi-btn{display:flex;align-items:center;justify-content:center;gap:.5rem;background:#13c5fa;border:none;border-radius:var(--r);padding:.75rem 1rem;font-size:14px;font-weight:600;color:#fff;cursor:pointer;font-family:inherit;text-decoration:none;transition:all .15s}
         .kofi-btn:hover{background:#0eb3f0}
+        .sub-box{background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:1rem}
+        .sub-plan{font-size:16px;font-weight:600;margin-bottom:.5rem}
+        .sub-desc{font-size:12px;color:var(--t2);margin-bottom:.75rem}
+        .btn-upgrade{background:var(--amber);color:#0A0900;border:none;border-radius:var(--rsm);padding:.6rem 1rem;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;width:100%}
+        .btn-upgrade:hover{background:var(--amber-d)}
+        .idea-actions{display:flex;gap:.3rem}
+        .fb-btn{background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);padding:.25rem .5rem;font-size:12px;cursor:pointer;transition:all .15s}
+        .fb-btn:hover{border-color:var(--amber);color:var(--amber)}
+        .fb-btn.active{border-color:var(--amber);background:var(--amber-bg)}
       `}</style>
       
       <div className="app-bar">
@@ -387,6 +428,9 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
               <div className="nudge-sub">Your best window closes in <strong>2 hours</strong>. That&apos;s plenty of time.</div>
               <button className="btn-as" onClick={() => showTab('ideas')}>Get ideas →</button>
             </div>
+            {store.plan === 'free' && (
+              <div className="usage-pill">📝 {store.ideasUsedToday}/5 ideas used today</div>
+            )}
             <div className="stats-grid">
               <div className="stat-card"><div className="stat-val">{streak}</div><div className="stat-lbl">Day streak</div><div className="stat-up">Personal best 🎉</div></div>
               <div className="stat-card"><div className="stat-val">{store.posts.filter(p => p.status === 'posted').length}</div><div className="stat-lbl">Posts this month</div><div className="stat-up">↑ 6 from last month</div></div>
@@ -425,7 +469,11 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
               <span>✦</span> {isGenerating ? 'Generating...' : 'Generate fresh ideas for me'}
             </button>
             {isGenerating && (
-              <div className="loading"><div className="ldot"></div><div className="ldot"></div><div className="ldot"></div></div>
+              <div>
+                <IdeaSkeleton />
+                <IdeaSkeleton />
+                <IdeaSkeleton />
+              </div>
             )}
             {store.ideas.length === 0 && !isGenerating && (
               <div style={{ textAlign: 'center', color: 'var(--t3)', padding: '2rem', fontSize: '14px' }}>Tap generate to get AI-powered ideas.</div>
@@ -438,7 +486,23 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
                 </div>
                 <div className="idea-text">{idea.content}</div>
                 <div className="idea-foot">
-                  <div></div>
+                  <div className="idea-actions">
+                    <button 
+                      className={`fb-btn ${store.ideaFeedback[idea.id] === 'up' ? 'active' : ''}`}
+                      onClick={() => {
+                        const current = store.ideaFeedback[idea.id];
+                        const newFeedback = current === 'up' ? 'down' : 'up';
+                        store.addIdeaFeedback(idea.id, newFeedback);
+                        trackEvents.ideaUsed(idea.type, idea.platform);
+                      }}
+                      title="Like this idea"
+                    >👍</button>
+                    <button 
+                      className={`fb-btn ${store.ideaFeedback[idea.id] === 'down' ? 'active' : ''}`}
+                      onClick={() => store.addIdeaFeedback(idea.id, 'down')}
+                      title="Not for me"
+                    >👎</button>
+                  </div>
                   <button className="btn-use" onClick={() => useIdea(idea)}>Use this idea →</button>
                 </div>
               </div>
@@ -502,6 +566,22 @@ Return ONLY valid JSON array: [{"type":"Post type","plat":"ig/tw/li/tk","text":"
                     <div className={`free-tag ${p.free ? 'free' : ''}`}>{p.free ? 'FREE' : 'PAID'}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+            <div className="settings-sec">
+              <div className="settings-h">Subscription</div>
+              <div className="sub-box">
+                <div className="sub-plan">{store.plan === 'pro' ? '🎉 Pro' : 'Free'}</div>
+                {store.plan === 'free' ? (
+                  <div>
+                    <div className="sub-desc">{5 - store.ideasUsedToday} ideas left today</div>
+                    <button className="btn-upgrade" onClick={() => window.location.href = '/api/checkout'}>
+                      Upgrade to Pro — $9/month
+                    </button>
+                  </div>
+                ) : (
+                  <div className="sub-desc">Unlimited ideas enabled</div>
+                )}
               </div>
             </div>
             <div className="settings-sec">

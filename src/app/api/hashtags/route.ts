@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callAI, HUMAN_CENTRIC_HASHTAGS } from '@/lib/ai';
+import { checkRateLimit, getClientIP } from '@/lib/ratelimit';
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const rateLimit = await checkRateLimit(ip);
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please try again later.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const { content, apiKey, provider = 'anthropic' } = await request.json();
     
